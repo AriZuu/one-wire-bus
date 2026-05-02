@@ -4,10 +4,14 @@ mod address;
 pub mod commands;
 pub mod crc;
 mod error;
+#[cfg(feature = "strong_pullup")]
+mod strong;
 
 pub use address::Address;
-use embedded_hal::{digital::{InputPin, OutputPin}, delay::DelayNs};
+use embedded_hal::{delay::DelayNs, digital::{InputPin, OutputPin}};
 pub use error::{OneWireError, OneWireResult};
+#[cfg(feature = "strong_pullup")]
+pub use strong::StrongPullupPin;
 
 pub const READ_SLOT_DURATION_MICROS: u16 = 70;
 
@@ -35,6 +39,7 @@ impl<T, E> OneWire<T>
 where
     T: InputPin<Error = E>,
     T: OutputPin<Error = E>,
+    T: StrongPullupPin<Error = E>,
 {
     pub fn new(pin: T, ignore_crc_mismatch: bool) -> OneWireResult<OneWire<T>, E> {
         let mut one_wire = OneWire {
@@ -83,6 +88,17 @@ where
             delay.delay_us(2);
         }
         Err(OneWireError::BusNotHigh)
+    }
+
+    pub fn set_strong_pullup(&mut self, enabled: bool) -> OneWireResult<(), E> {
+        if enabled {
+            self.pin.enable_strong_pullup()
+            .map_err(|err| OneWireError::PinError(err))
+
+        } else {
+            self.pin.disable_strong_pullup()
+            .map_err(|err| OneWireError::PinError(err))
+        }
     }
 
     /// Sends a reset pulse, then returns true if a device is present
@@ -373,6 +389,7 @@ impl<'a, 'b, T, E, D> Iterator for DeviceSearch<'a, 'b, T, D>
 where
     T: InputPin<Error = E>,
     T: OutputPin<Error = E>,
+    T: StrongPullupPin<Error = E>,
     D: DelayNs,
 {
     type Item = OneWireResult<Address, E>;
