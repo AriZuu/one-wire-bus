@@ -8,10 +8,15 @@ mod error;
 mod strong;
 
 pub use address::Address;
-use embedded_hal::{delay::DelayNs, digital::{InputPin, OutputPin}};
+use embedded_hal::{
+    delay::DelayNs,
+    digital::{Error, InputPin, OutputPin},
+};
 pub use error::{OneWireError, OneWireResult};
 #[cfg(feature = "strong_pullup")]
 pub use strong::StrongPullupPin;
+
+use crate::strong::DummyPullupPin;
 
 pub const READ_SLOT_DURATION_MICROS: u16 = 70;
 
@@ -41,7 +46,14 @@ where
     T: OutputPin<Error = E>,
     T: StrongPullupPin<Error = E>,
 {
-    pub fn new(pin: T, ignore_crc_mismatch: bool) -> OneWireResult<OneWire<T>, E> {
+    pub fn new<S: InputPin<Error = ES> + OutputPin<Error = ES>, ES: Error>(
+        pin: S,
+        ignore_crc_mismatch: bool,
+    ) -> OneWireResult<OneWire<DummyPullupPin<S>>, ES> {
+        OneWire::new_strong(DummyPullupPin::new(pin), ignore_crc_mismatch)
+    }
+
+    pub fn new_strong(pin: T, ignore_crc_mismatch: bool) -> OneWireResult<OneWire<T>, E> {
         let mut one_wire = OneWire {
             pin,
             ignore_crc_mismatch,
@@ -92,12 +104,13 @@ where
 
     pub fn set_strong_pullup(&mut self, enabled: bool) -> OneWireResult<(), E> {
         if enabled {
-            self.pin.enable_strong_pullup()
-            .map_err(|err| OneWireError::PinError(err))
-
+            self.pin
+                .enable_strong_pullup()
+                .map_err(|err| OneWireError::PinError(err))
         } else {
-            self.pin.disable_strong_pullup()
-            .map_err(|err| OneWireError::PinError(err))
+            self.pin
+                .disable_strong_pullup()
+                .map_err(|err| OneWireError::PinError(err))
         }
     }
 
@@ -168,11 +181,7 @@ where
         Ok(())
     }
 
-    pub fn write_bit(
-        &mut self,
-        value: bool,
-        delay: &mut impl DelayNs,
-    ) -> OneWireResult<(), E> {
+    pub fn write_bit(&mut self, value: bool, delay: &mut impl DelayNs) -> OneWireResult<(), E> {
         if value {
             self.write_1_bit(delay)
         } else {
@@ -180,11 +189,7 @@ where
         }
     }
 
-    pub fn write_byte(
-        &mut self,
-        mut value: u8,
-        delay: &mut impl DelayNs,
-    ) -> OneWireResult<(), E> {
+    pub fn write_byte(&mut self, mut value: u8, delay: &mut impl DelayNs) -> OneWireResult<(), E> {
         for _ in 0..8 {
             self.write_bit(value & 0x01 == 0x01, delay)?;
             value >>= 1;
@@ -192,11 +197,7 @@ where
         Ok(())
     }
 
-    pub fn write_bytes(
-        &mut self,
-        bytes: &[u8],
-        delay: &mut impl DelayNs,
-    ) -> OneWireResult<(), E> {
+    pub fn write_bytes(&mut self, bytes: &[u8], delay: &mut impl DelayNs) -> OneWireResult<(), E> {
         for i in 0..bytes.len() {
             self.write_byte(bytes[i], delay)?;
         }
